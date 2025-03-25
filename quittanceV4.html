@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Quittance de Loyer - Signature incluse</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: auto; padding: 20px; }
+    h2 { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; }
+    label { font-weight: bold; display: block; margin-top: 12px; }
+    input { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
+    button { margin-top: 15px; padding: 10px 15px; font-size: 14px; cursor: pointer; }
+    canvas { border: 1px solid #888; margin-top: 10px; }
+    .btn-row { margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap; }
+    table { width: 100%; margin-top: 20px; border-collapse: collapse; }
+    th, td { border: 1px solid #aaa; padding: 8px; text-align: left; }
+  </style>
+</head>
+<body>
+
+<h2>Quittance de Loyer</h2>
+
+<form id="quittanceForm">
+  <label>Référence de la quittance :</label>
+  <input type="text" id="reference">
+
+  <label>Nom du bailleur :</label>
+  <input type="text" id="bailleur">
+
+  <label>CIN du bailleur :</label>
+  <input type="text" id="cinBailleur">
+
+  <label>Adresse du bailleur :</label>
+  <input type="text" id="adresseBailleur">
+
+  <label>Nom du locataire :</label>
+  <input type="text" id="locataire">
+
+  <label>CIN du locataire :</label>
+  <input type="text" id="cinLocataire">
+
+  <label>Adresse du logement loué :</label>
+  <input type="text" id="adresseLogement">
+
+  <label>Mois concerné :</label>
+  <input type="text" id="mois">
+
+  <label>Montant total (MAD) :</label>
+  <input type="text" id="montant">
+
+  <label>Montant en lettres :</label>
+  <input type="text" id="montantLettres">
+
+  <label>Ville :</label>
+  <input type="text" id="ville">
+
+  <label>Date :</label>
+  <input type="date" id="date">
+
+  <!-- Signature -->
+  <label>Signature du bailleur :</label>
+  <canvas id="signaturePad" width="300" height="100"></canvas><br>
+  <label>Téléverser une signature existante :</label>
+<input type="file" id="uploadSignature" accept="image/*" onchange="importerSignature(event)">
+  <button type="button" onclick="clearSignature()">🧹 Effacer la signature</button>
+  
+
+  <!-- Actions -->
+  <div class="btn-row">
+    <button type="button" onclick="saveInfo()">💾 Sauvegarder les infos</button>
+    <button type="button" onclick="loadInfo()">📂 Charger les infos</button>
+    <button type="button" onclick="genererPDF()">📥 Télécharger la quittance PDF</button>
+  </div>
+</form>
+
+<h3>📁 Historique des quittances générées</h3>
+<table id="historiqueTable">
+  <thead>
+    <tr>
+      <th>Référence</th>
+      <th>Mois</th>
+      <th>Montant</th>
+      <th>Date</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<div class="btn-row">
+  <button onclick="exportCSV()">⬇️ Exporter en CSV</button>
+  <button onclick="clearHistorique()">🗑 Effacer l’historique</button>
+</div>
+
+<script>
+function getFormData() {
+  return {
+    reference: document.getElementById("reference").value,
+    bailleur: document.getElementById("bailleur").value,
+    cinBailleur: document.getElementById("cinBailleur").value,
+    adresseBailleur: document.getElementById("adresseBailleur").value,
+    locataire: document.getElementById("locataire").value,
+    cinLocataire: document.getElementById("cinLocataire").value,
+    adresseLogement: document.getElementById("adresseLogement").value,
+    mois: document.getElementById("mois").value,
+    montant: document.getElementById("montant").value,
+    montantLettres: document.getElementById("montantLettres").value,
+    ville: document.getElementById("ville").value,
+    date: document.getElementById("date").value
+  };
+}
+
+function saveInfo() {
+  const data = getFormData();
+  localStorage.setItem("bailleurInfos", JSON.stringify({
+    bailleur: data.bailleur,
+    cinBailleur: data.cinBailleur,
+    adresseBailleur: data.adresseBailleur,
+    locataire: data.locataire,
+    cinLocataire: data.cinLocataire,
+    adresseLogement: data.adresseLogement
+  }));
+  alert("Informations sauvegardées !");
+}
+
+function loadInfo() {
+  const data = JSON.parse(localStorage.getItem("bailleurInfos"));
+  if (!data) return alert("Aucune donnée enregistrée.");
+  document.getElementById("bailleur").value = data.bailleur;
+  document.getElementById("cinBailleur").value = data.cinBailleur;
+  document.getElementById("adresseBailleur").value = data.adresseBailleur;
+  document.getElementById("locataire").value = data.locataire;
+  document.getElementById("cinLocataire").value = data.cinLocataire;
+  document.getElementById("adresseLogement").value = data.adresseLogement;
+}
+
+function genererPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const data = getFormData();
+
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.5);
+  doc.rect(15, 15, 180, 260);
+  doc.setFont("Helvetica", "bold");
+  doc.setFontSize(14);
+  doc.text("QUITTANCE DE LOYER", 105, 25, { align: "center" });
+
+  doc.setFontSize(11);
+  doc.setFont("Helvetica", "normal");
+  let y = 35;
+
+  const addLine = (label, value) => {
+    doc.setFont("Helvetica", "bold");
+    doc.text(`${label} :`, 20, y);
+    doc.setFont("Helvetica", "normal");
+    doc.text(value || "......................", 70, y);
+    y += 8;
+  };
+
+  addLine("Référence quittance", data.reference);
+  addLine("Nom du bailleur", data.bailleur);
+  addLine("CIN du bailleur", data.cinBailleur);
+  addLine("Adresse du bailleur", data.adresseBailleur);
+  y += 4;
+  addLine("Nom du locataire", data.locataire);
+  addLine("CIN du locataire", data.cinLocataire);
+  addLine("Adresse du logement", data.adresseLogement);
+  y += 4;
+  addLine("Mois concerné", data.mois);
+  addLine("Montant total", `${data.montant} MAD`);
+  addLine("Montant en lettres", data.montantLettres);
+  y += 10;
+
+  doc.text(`Je soussigné(e), ${data.bailleur}, certifie avoir reçu de la part de ${data.locataire}`, 20, y, { maxWidth: 170 }); y += 6;
+  doc.text(`la somme de ${data.montant} MAD (${data.montantLettres}) au titre du loyer du mois de ${data.mois}.`, 20, y, { maxWidth: 170 }); y += 12;
+  doc.text(`Fait à ${data.ville}, le ${data.date}`, 20, y); y += 20;
+  doc.setFont("Helvetica", "bold");
+  doc.text("Signature du bailleur :", 20, y); y += 5;
+
+  // Intégration de la signature
+  const canvas = document.getElementById("signaturePad");
+  const imgData = canvas.toDataURL("image/png");
+  doc.addImage(imgData, 'PNG', 20, y, 60, 25);
+
+  doc.save(`quittance_loyer_${data.reference || data.mois}.pdf`);
+  ajouterHistorique(data);
+}
+
+// Signature Pad
+const canvas = document.getElementById("signaturePad");
+const ctx = canvas.getContext("2d");
+let drawing = false;
+
+canvas.addEventListener("mousedown", () => drawing = true);
+canvas.addEventListener("mouseup", () => drawing = false);
+canvas.addEventListener("mouseout", () => drawing = false);
+canvas.addEventListener("mousemove", draw);
+
+canvas.addEventListener("touchstart", () => drawing = true);
+canvas.addEventListener("touchend", () => drawing = false);
+canvas.addEventListener("touchcancel", () => drawing = false);
+canvas.addEventListener("touchmove", e => draw(e.touches[0]));
+
+function draw(e) {
+  if (!drawing) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX || e.pageX) - rect.left;
+  const y = (e.clientY || e.pageY) - rect.top;
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "#000";
+  ctx.lineTo(x, y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+}
+
+function clearSignature() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.beginPath();
+}
+
+// Historique
+function ajouterHistorique(data) {
+  let historique = JSON.parse(localStorage.getItem("historiqueQuittances")) || [];
+  historique.push({
+    reference: data.reference,
+    mois: data.mois,
+    montant: data.montant + " MAD",
+    date: data.date
+  });
+  localStorage.setItem("historiqueQuittances", JSON.stringify(historique));
+  afficherHistorique();
+}
+
+function afficherHistorique() {
+  const historique = JSON.parse(localStorage.getItem("historiqueQuittances")) || [];
+  const tbody = document.querySelector("#historiqueTable tbody");
+  tbody.innerHTML = "";
+  historique.forEach(entry => {
+    const row = `<tr>
+      <td>${entry.reference}</td>
+      <td>${entry.mois}</td>
+      <td>${entry.montant}</td>
+      <td>${entry.date}</td>
+    </tr>`;
+    tbody.innerHTML += row;
+  });
+}
+
+function clearHistorique() {
+  if (confirm("Effacer l'historique des quittances ?")) {
+    localStorage.removeItem("historiqueQuittances");
+    afficherHistorique();
+  }
+}
+
+function exportCSV() {
+  const historique = JSON.parse(localStorage.getItem("historiqueQuittances")) || [];
+  if (historique.length === 0) return alert("Aucun historique à exporter.");
+  const rows = [["Référence", "Mois", "Montant", "Date"]];
+  historique.forEach(e => rows.push([e.reference, e.mois, e.montant, e.date]));
+  const csvContent = rows.map(e => e.join(",")).join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "historique_quittances.csv";
+  link.click();
+}
+
+window.onload = afficherHistorique;
+function telechargerSignature() {
+  const canvas = document.getElementById("signaturePad");
+  const imageData = canvas.toDataURL("image/png");
+  const link = document.createElement("a");
+  link.href = imageData;
+  link.download = "signature_bailleur.png";
+  link.click();
+}
+
+function importerSignature(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const img = new Image();
+    img.onload = function () {
+      clearSignature(); // Nettoie le canvas avant d'afficher l'image
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+
+</script>
+
+</body>
+</html>
